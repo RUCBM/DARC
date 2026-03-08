@@ -1,4 +1,22 @@
-# *DARC : Decoupled Asymmetric Reasoning Curriculum for LLM Evolution*
+<p align="center" width="100%">
+</p>
+
+<div id="top" align="center">
+
+DARC: Decoupled Asymmetric Reasoning Curriculum for Self-Evolving Language Models
+-----------------------------
+<img src="https://img.shields.io/badge/Version-1.0.0-blue.svg" alt="Version"> 
+<img src="https://img.shields.io/badge/License-Apache_2.0-green.svg" alt="License">
+
+<h4>
+  | <a href="https://arxiv.org/pdf/2601.13761v1">📑 Paper</a> |
+  <a href="https://huggingface.co/LulaCola/DARC_Questioner_Qwen3-8B">🤗 Questioner Checkpoint</a> |
+  <a href="https://huggingface.co/LulaCola/DARC_Solver_Qwen3-8B">🤗 Solver Checkpoint</a> |
+  <a href="https://huggingface.co/datasets/LulaCola/DARC_Corpus">📚 Used Unlabeled Corpus</a> |
+  <a href="https://huggingface.co/datasets/LulaCola/DARC_Solver_Train">📚 Solver Training Questions</a> |
+</h4>
+
+</div>
 
 Self-play with large language models has emerged as a promising paradigm for achieving self-improving artificial intelligence.  
 However, existing self-play frameworks often suffer from optimization instability, due to (i) non-stationary objectives induced by solver-dependent reward feedback for the *Questioner*, and (ii) bootstrapping errors from self-generated pseudo-labels used to supervise the *Solver*.
