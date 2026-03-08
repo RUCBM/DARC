@@ -12,8 +12,8 @@ DARC: Decoupled Asymmetric Reasoning Curriculum for Self-Evolving Language Model
   | <a href="https://arxiv.org/pdf/2601.13761v1">📑 Paper</a> |
   <a href="https://huggingface.co/LulaCola/DARC_Questioner_Qwen3-8B">🤗 Questioner Checkpoint</a> |
   <a href="https://huggingface.co/LulaCola/DARC_Solver_Qwen3-8B">🤗 Solver Checkpoint</a> |
-  <a href="https://huggingface.co/datasets/LulaCola/DARC_Corpus">📚 Used Unlabeled Corpus</a> |
-  <a href="https://huggingface.co/datasets/LulaCola/DARC_Solver_Train">📚 Solver Training Questions</a> |
+  <a href="https://huggingface.co/datasets/LulaCola/DARC_Corpus">📚 Corpus</a> |
+  <a href="https://huggingface.co/datasets/LulaCola/DARC_Solver_Train">📚 Questions</a> |
 </h4>
 
 </div>
