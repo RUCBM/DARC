@@ -1,10 +1,13 @@
 import json
-import os
-from openai import OpenAI
-from tqdm import tqdm
-import random
 import argparse
-import time
+import os
+from tqdm import tqdm
+
+if __package__:
+    from .recheck_common import JudgeError, create_clients, judge_answer
+else:
+    from recheck_common import JudgeError, create_clients, judge_answer
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 parser = argparse.ArgumentParser()
@@ -14,69 +17,13 @@ parser.add_argument("--api_urls", type=str, default=os.getenv("API_BASE_URL", "h
 parser.add_argument("--api_keys", type=str, default=os.getenv("API_KEY"))
 args = parser.parse_args()
 
-api_urls = [u.strip() for u in args.api_urls.split(",") if u.strip()]
-api_keys = [k.strip() for k in (args.api_keys or "").split(",") if k.strip()]
-if not api_keys:
-    raise ValueError("API_KEY (or --api_keys) is required.")
-if len(api_urls) != len(api_keys):
-    if len(api_keys) == 1:
-        api_keys = api_keys * len(api_urls)
-    else:
-        raise ValueError("api_urls and api_keys length mismatch.")
-
-                                      
-clients = [
-    OpenAI(base_url=api_url, api_key=api_key)
-    for api_url, api_key in zip(api_urls, api_keys)
-]
+clients = create_clients(args.api_urls, args.api_keys)
 
 
-                              
-                                     
-                              
 def call_api_with_retry(answer, response, max_retries=5):
-    delay = 1
-    for attempt in range(max_retries):
-        try:
-                                         
-            api_index = random.randint(0, len(clients) - 1)
-            client = clients[api_index]
-
-            completion = client.chat.completions.create(
-                                                              
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are a math answer checker."},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Hi, there is a answer: {answer}\n\n, "
-                            f"and the ground truth answer is: {response}\n\n, "
-                            f"please check whether the answer is correct or not, "
-                            f"and return the **only** Yes or No."
-                        ),
-                    },
-                ],
-                temperature=0.1,
-                timeout=20,
-            )
-
-            return completion.choices[0].message.content
-
-        except Exception as e:
-            print(f"[Retry {attempt+1}/{max_retries}] Error: {str(e)}")
-            if attempt < max_retries - 1:
-                time.sleep(delay)
-                delay *= 2        
-            else:
-                return "No"
-
-    return "No"
+    return judge_answer(clients, answer, response, max_attempts=max_retries)
 
 
-                              
-           
-                              
 def process_example_parallel(item):
     answer, response = item["answer"], item["response"]
     score = item["score"]
@@ -85,8 +32,11 @@ def process_example_parallel(item):
     if score >= 0.5:
         return idx, score             
 
-    gpt_check = call_api_with_retry(answer, response)
-    if "yes" in gpt_check.lower():
+    try:
+        is_correct = call_api_with_retry(answer, response)
+    except JudgeError as exc:
+        raise JudgeError(f"sample {idx}: {exc}") from None
+    if is_correct:
         score = 1
 
     return idx, score
@@ -119,7 +69,12 @@ for model_name in [args.model_name]:
             futures = [executor.submit(process_example_parallel, item) for item in items]
 
             for future in tqdm(as_completed(futures), total=len(items), desc=f"Processing {dataset}"):
-                idx, new_score = future.result()
+                try:
+                    idx, new_score = future.result()
+                except JudgeError as exc:
+                    for pending in futures:
+                        pending.cancel()
+                    raise JudgeError(f"{dataset}, {exc}") from None
                 results[idx]['score'] = new_score
 
         avg_score = round(sum(r['score'] for r in results[:-1]) / len(results[:-1]) * 100, 2)

@@ -670,7 +670,15 @@ def generate_relation_results(payload: List[Dict[str, str]]) -> List[Dict[str, f
     if not payload:
         return []
 
-    max_workers = int(os.getenv("DEEPSEEK_MAX_WORKERS", "8"))
+    backend = os.getenv("GROUNDING_JUDGE_BACKEND", "deepseek").strip().lower()
+    if backend == "qwen3_base":
+        from examples.reward_function.grounding_judge import judge_related
+        max_workers = int(os.getenv("GROUNDING_JUDGE_MAX_WORKERS", "8"))
+    elif backend == "deepseek":
+        judge_related = _deepseek_judge_related
+        max_workers = int(os.getenv("DEEPSEEK_MAX_WORKERS", "8"))
+    else:
+        raise ValueError(f"Unknown GROUNDING_JUDGE_BACKEND: {backend}")
                                                                
     results: List[Optional[Dict[str, float]]] = [None] * len(payload)
     tasks: Dict = {}
@@ -691,7 +699,7 @@ def generate_relation_results(payload: List[Dict[str, str]]) -> List[Dict[str, f
     from concurrent.futures import ThreadPoolExecutor, as_completed
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
-            executor.submit(_deepseek_judge_related, text, question): idx
+            executor.submit(judge_related, text, question): idx
             for idx, (text, question) in tasks.items()
         }
         for future in as_completed(future_to_idx):
@@ -700,8 +708,12 @@ def generate_relation_results(payload: List[Dict[str, str]]) -> List[Dict[str, f
             try:
                 flag = future.result()
             except Exception as exc:
+                if backend == "qwen3_base":
+                    raise RuntimeError(f"Qwen3 grounding failed at batch index {idx}") from exc
                 print(f"[related] Future error at idx={idx}: {exc}")
                 flag = None
+            if backend == "qwen3_base" and not isinstance(flag, bool):
+                raise RuntimeError(f"Qwen3 grounding returned no valid verdict at batch index {idx}")
             if flag is None:
                                                                                   
                 flag = True

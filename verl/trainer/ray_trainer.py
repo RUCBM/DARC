@@ -404,16 +404,22 @@ class RayPPOTrainer:
                         label_batch.meta_info[k] = type(getattr(self.config.worker.rollout, k))(v) if hasattr(self.config.worker.rollout, k) else float(v)
                     except Exception:
                         pass
+            n = int(label_batch.meta_info.get("n", self.config.worker.rollout.n))
+            if n < 1:
+                raise ValueError(f"Teacher rollout sample count must be positive, got {n}.")
             label_batch, pad_size = pad_dataproto_to_divisor(label_batch, self.actor_rollout_wg.world_size)
             label_out = self.actor_rollout_wg.generate_sequences(label_batch)
-            label_out = unpad_dataproto(label_out, pad_size=pad_size)
+            expected_responses = len(label_batch) * n
+            if len(label_out) != expected_responses:
+                raise ValueError(
+                    f"Teacher rollout returned {len(label_out)} responses; expected {expected_responses}."
+                )
+            # Padding counts prompts; each padded prompt produces n response rows.
+            label_out = unpad_dataproto(label_out, pad_size=pad_size * n)
 
-            # Decode and majority vote per original sample
+            # Decode and majority vote per original sample using the requested n.
             resp_ids = label_out.batch["responses"]  # shape: [m*n, L]
-            total = resp_ids.shape[0]
             m = len(prompts_text)
-            # infer n from ratio
-            n = max(total // max(m, 1), 1)
 
             def _extract_answer(txt: str) -> str:
                 try:

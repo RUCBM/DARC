@@ -10,7 +10,7 @@ export LOG_TRUNCATE=0
 solver_model_path=$1
 questioner_model_path=$2
 save_path=$3
-solver_train_file=$4
+questioner_train_file=$4
 
 echo "save_path: $save_path"
 RUN_ID=$(date +%s%N)

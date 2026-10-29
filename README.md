@@ -124,6 +124,61 @@ Arguments:
 
 - arg4: training dataset path (parquet file containing the context/prompts).
 
+### Optional experiment: Qwen3-4B-Base grounding judge
+
+The extra Questioner entrypoint replaces only the grounding/relevance judge with
+**Qwen3-4B-Base**. It sends a plain-text Completion request with
+`extra_body={"guided_choice": ["yes", "no"]}` and `temperature=0` to vLLM.
+This restricts the complete generated text to the two literal choices; it is not
+just a prompt instruction or a one-token output limit. The original relevance
+question is retained. See [vLLM 0.8.5 structured outputs](https://docs.vllm.ai/en/v0.8.5/features/structured_outputs.html).
+Use the repository's pinned vLLM version; newer versions may use a different API.
+
+First reserve GPU resources for the judge. The existing training recipe already
+uses GPUs 0–3 for Questioner training and 4–7 for Solver inference: **do not launch
+the judge on those GPUs concurrently without adjusting that allocation**.
+The judge launcher requires an explicit GPU selection and runs in the foreground,
+listening only on localhost. It does not start automatically with training.
+
+```bash
+# In a separate terminal, after reserving GPU resources:
+export CUDA_VISIBLE_DEVICES="$GROUNDING_JUDGE_GPU"
+bash vllm_service_init/start_grounding_judge.sh /path/to/Qwen3-4B-Base
+```
+
+Once the service is ready, use the same four arguments as the original training
+entrypoint and a separate experiment name:
+
+```bash
+export GROUNDING_JUDGE_BASE_URL="http://127.0.0.1:6100/v1"
+bash scripts/difficulty_aware_questioner_train_qwen3_grounding.sh \
+  /path/to/solver_model \
+  /path/to/questioner_model \
+  questioner_qwen3_base_grounding \
+  /path/to/dataset.parquet
+```
+
+The wrapper tests one constrained completion before launching training. Both
+`yes` and `no` are valid verdicts; correctness of the judge still needs separate
+evaluation. Only exact, normally terminated `yes`/`no` outputs are accepted.
+Request failures, truncated outputs, and invalid outputs are retried (default 3
+attempts), then stop this experiment instead of silently granting a grounding
+reward or falling back to DeepSeek. Inputs are not silently truncated.
+
+Optional settings: `GROUNDING_JUDGE_MODEL` (server alias, default
+`Qwen3-4B-Base`), `GROUNDING_JUDGE_PORT` (server, default 6100),
+`GROUNDING_JUDGE_MAX_MODEL_LEN` (server, default 32768),
+`GROUNDING_JUDGE_TP_SIZE` (server, default 1),
+`GROUNDING_JUDGE_GPU_MEMORY_UTILIZATION` (server, default 0.9),
+`GROUNDING_JUDGE_TIMEOUT` (client seconds, default 60),
+`GROUNDING_JUDGE_RETRIES` (client, default 3), and
+`GROUNDING_JUDGE_MAX_WORKERS` (client, default 8).
+If the port or alias changes, set the matching client URL/model.
+For authentication, set `GROUNDING_JUDGE_API_KEY` to the same value in the server
+and training environments. Otherwise the localhost server has no authentication;
+the client uses a non-secret SDK placeholder and does not reuse `API_KEY`.
+The original entrypoint defaults to DeepSeek (`GROUNDING_JUDGE_BACKEND=deepseek`).
+
 ### 2) Generate solver datasets (from the trained Questioner)
 
 This step involves two parts: first, serving the trained Questioner model using vLLM, and second, running the generation script to produce the training data for the Solver.

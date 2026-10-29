@@ -1,11 +1,12 @@
 import json
-from mathruler.grader import extract_boxed_content, grade_answer
-import openai
-import requests
-from tqdm import tqdm
-import random
 import argparse
 import os
+from tqdm import tqdm
+
+if __package__:
+    from .recheck_common import JudgeError, create_clients, judge_answer
+else:
+    from recheck_common import JudgeError, create_clients, judge_answer
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-7B-Instruct")
@@ -14,36 +15,13 @@ parser.add_argument("--api_keys", type=str, default=os.getenv("API_KEY"))
 args = parser.parse_args()
 
 STORAGE_PATH = os.getenv("STORAGE_PATH")
-api_urls = [u.strip() for u in args.api_urls.split(",") if u.strip()]
-api_keys = [k.strip() for k in (args.api_keys or "").split(",") if k.strip()]
-if not api_keys:
-    raise ValueError("API_KEY (or --api_keys) is required.")
-if len(api_urls) != len(api_keys):
-    if len(api_keys) == 1:
-        api_keys = api_keys * len(api_urls)
-    else:
-        raise ValueError("api_urls and api_keys length mismatch.")
-
+clients = create_clients(args.api_urls, args.api_keys)
 
 
 def process_example(answer, response):
-    try:
-        example = {
-            "model": "gpt-4o",
-            "messages": [
-                {"role": "system", "content": "You are a math answer checker."},
-                {"role": "user", "content": f"Hi, there is a answer: {answer}\n\n, and the ground truth answer is: {response}\n\n, please check whether the answer is correct or not, and return the **only** Yes or No."}
-            ],
-            "temperature": 0.1
-        }
-        api_index = random.randint(0, len(api_urls)-1)
-        api_url = api_urls[api_index]
-        api_key = api_keys[api_index]
-        response = requests.post(api_url, headers={"api-key": api_key,"Content-Type": "application/json"}, json=example, timeout=20)
-        return response.json()['choices'][0]['message']['content']
-    except Exception as e:
-        print(e)
-        return "No"
+    return judge_answer(clients, answer, response)
+
+
 new_results = []
 for model_name in [args.model_name]:
     for dataset in [
@@ -59,10 +37,13 @@ for model_name in [args.model_name]:
             results = json.load(f)
 
         for i in tqdm(range(len(results)-1)):
-                if results[i]['score'] < 0.5:
-                    gpt_check = process_example(results[i]['answer'],results[i]['response'])
-                    if "yes" in gpt_check.lower():
-                        results[i]['score']=1
+            if results[i]['score'] < 0.5:
+                try:
+                    is_correct = process_example(results[i]['answer'], results[i]['response'])
+                except JudgeError as exc:
+                    raise JudgeError(f"{dataset}, sample {i}: {exc}") from None
+                if is_correct:
+                    results[i]['score'] = 1
         new_results.append({
             'model': model_name,
             'dataset': dataset,
