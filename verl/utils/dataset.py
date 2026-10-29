@@ -290,7 +290,8 @@ class RLHFDataset(Dataset):
             ):
                 return False
         else:
-            if len(self._chat_to_prompt_fallback(messages)) > self.max_prompt_length:
+            prompt = self._chat_to_prompt_fallback(messages)
+            if len(self.tokenizer.encode(prompt, add_special_tokens=False)) > self.max_prompt_length:
                 return False
 
         if self.label_prompt_key and self.label_prompt_key in example:
@@ -303,7 +304,8 @@ class RLHFDataset(Dataset):
                     ):
                         return False
                 else:
-                    if len(self._chat_to_prompt_fallback(label_messages)) > self.max_prompt_length:
+                    label_prompt = self._chat_to_prompt_fallback(label_messages)
+                    if len(self.tokenizer.encode(label_prompt, add_special_tokens=False)) > self.max_prompt_length:
                         return False
         return True
         
